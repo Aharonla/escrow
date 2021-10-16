@@ -11,7 +11,7 @@ module.exports = {
       type: 'tezos',
     },
     testnet: {
-      host: 'https://granadanet.smartpy.io/chains/main/blocks/head/header',
+      host: 'https://testnet-tezos.giganode.io',
       port: 8732, //172.15.67.251.55983',
       network_id: '*',
       secret,
@@ -19,6 +19,7 @@ module.exports = {
       password,
       email,
       type: 'tezos',
+      networkCheckTimeout: 20000,
     },
   },
 };

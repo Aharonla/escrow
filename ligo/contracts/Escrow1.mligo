@@ -2,7 +2,8 @@ type rewardType = {
     name : string;
     slashing_rate : nat;
     commission_rate : nat;
-    time_limit : int;
+    transfer_time_limit : int;
+    confirm_time_limit : int;
 }
 
 type item = {
@@ -15,7 +16,8 @@ type item = {
     slashing : tez;
     state : string;
     start_time : timestamp;
-    period : int;
+    transfer_period : int;
+    confirm_period : int;
     end_time : timestamp;
     item_hash : string;
 }
@@ -34,6 +36,7 @@ type adminAction =
 | AddType of rewardType
 | ChangeType of rewardType
 | RemoveType of rewardType
+| Reward of nat
 
 type action = 
 | Admin of adminAction
@@ -41,42 +44,17 @@ type action =
 | Bid of nat
 | Transfer of transferType
 | Confirm of nat
-| Reward of nat
 
 type storage = {
     rewards : (string, rewardType) map;
     offered_items : (nat, item) map;
     sold_items : (nat, item) map;
     under_escrow : (nat, item) map;
-    count : nat;
     owner : address;
     last_id : nat;
 }
 
 type returnType = operation list * storage
-
-//==========================================================
-// Admin functions
-//==========================================================
-
-let addType (t, store : rewardType * storage) : returnType =
-    match Map.find_opt t.name store.rewards with 
-    | Some tp -> (failwith("reward type already exists") : returnType)
-    | None -> ([] : operation list), { store with rewards = Map.add t.name t store.rewards }
-
-let changeType (t, store : rewardType * storage) : returnType =
-    match Map.find_opt t.name store.rewards with
-    | None -> (failwith("reward type doesn't exist") : returnType)
-    | Some tp -> ([] : operation list), { store with rewards = Map.update t.name (Some t) store.rewards }
-    
-let removeType (t, store : rewardType * storage) : returnType =
-    match Map.find_opt t.name store.rewards with
-    | None -> (failwith("reward type doesn't exist") : returnType)
-    | Some tp -> ([] : operation list), { store with rewards = Map.remove t.name store.rewards }
-    
-
-// let terminateExchange (escrow, store : escrow * storage) : returnType =
-//     ([] : operation list), store
 
 //===========================================================================
 // Helper functions
@@ -91,6 +69,55 @@ let getContract (ad : address) : unit contract =
         | Some c -> c in
         contr
 
+//==========================================================
+// Admin functions
+//==========================================================
+
+let addType (t, store : rewardType * storage) : returnType =
+    match Map.find_opt t.name store.rewards with 
+    | Some tp -> (failwith("Reward type already exists") : returnType)
+    | None -> ([] : operation list), { store with rewards = Map.add t.name t store.rewards }
+
+let changeType (t, store : rewardType * storage) : returnType =
+    match Map.find_opt t.name store.rewards with
+    | None -> (failwith("Reward type doesn't exist") : returnType)
+    | Some tp -> ([] : operation list), { store with rewards = Map.update t.name (Some t) store.rewards }
+    
+let removeType (t, store : rewardType * storage) : returnType =
+    match Map.find_opt t.name store.rewards with
+    | None -> (failwith("Reward type doesn't exist") : returnType)
+    | Some tp -> ([] : operation list), { store with rewards = Map.remove t.name store.rewards }
+
+let reward (i, store : nat * storage) : returnType =
+    match Map.find_opt i store.under_escrow with
+    | None -> (failwith("This item is not under escrow") : returnType)
+    | Some item ->
+    if Tezos.now <= item.end_time then
+    (failwith("Wait until the exchange is over") : returnType)
+    else
+    let op_list : operation list = [] in 
+    let buyer_contract = getContract item.buyer in
+    let seller_contract = getContract item.seller in
+    let updated_sold = Map.add i item store.sold_items in
+    let updated_escrows = Map.remove i store.under_escrow in
+    if item.state = "Confirmed" then
+    let buyer_transfer = Tezos.transaction unit item.slashing buyer_contract :: op_list in
+    let seller_transfer = Tezos.transaction unit (item.asked_price - item.commission) seller_contract :: op_list in
+    op_list, store
+    else 
+    if item.state = "Waiting for validation" then
+    let seller_transfer = Tezos.transaction unit (item.asked_price - item.commission) seller_contract :: op_list in
+    op_list, store
+    else  
+    let buyer_transfer = Tezos.transaction unit (item.asked_price + item.slashing) buyer_contract :: op_list in
+    op_list, store
+
+    
+
+// let terminateExchange (escrow, store : escrow * storage) : returnType =
+//     ([] : operation list), store
+
+
 //===========================================================================
 // Entry Points
 //===========================================================================
@@ -101,12 +128,13 @@ let getContract (ad : address) : unit contract =
 
 let admin (p, store : adminAction * storage) : returnType =
     if store.owner <> Tezos.source then
-        (failwith("only the owner has admin rights") : returnType)
+        (failwith("Only the owner has admin rights") : returnType)
     else 
         match p with
         | AddType(v) -> addType(v, store)
         | ChangeType(v) -> changeType(v, store)
         | RemoveType(v) -> removeType(v, store)
+        | Reward(v) -> reward(v, store)
 
 //===============================================
 // Seller entry points
@@ -122,7 +150,7 @@ let admin (p, store : adminAction * storage) : returnType =
 
 let offer (offer, store : offerType * storage) : returnType =
     match Map.find_opt offer.item_type store.rewards with 
-    | None -> (failwith("this item's has type is not defined") : returnType)
+    | None -> (failwith("This item's has type is not defined") : returnType)
     | Some r ->
     let new_item : item = {
         id = store.last_id + 1n;
@@ -135,7 +163,8 @@ let offer (offer, store : offerType * storage) : returnType =
         state = "Inactive";
         item_hash = "";
         start_time = Tezos.now;
-        period = r.time_limit;
+        transfer_period = r.transfer_time_limit;
+        confirm_period = r.confirm_time_limit;
         end_time = (0 : timestamp);
     } in
     let new_store = { store with 
@@ -157,10 +186,10 @@ let offer (offer, store : offerType * storage) : returnType =
 
 let transfer (t, store : transferType * storage) : returnType =
     match Map.find_opt t.index store.under_escrow with
-    | None -> (failwith("This item is not under escrow or doesnt exist") : returnType)
+    | None -> (failwith("This item is not under escrow or doesn't exist") : returnType)
     | Some item -> 
     if Tezos.source <> item.seller then
-    (failwith("only the seller of the item can transfer the item hash") : returnType)
+    (failwith("Only the seller of the item can transfer the item hash") : returnType)
     else if item.state <> "Waiting for transfer" then
     (failwith("No tokens were sent for this item") : returnType)
     else if Tezos.now > item.end_time then
@@ -169,7 +198,7 @@ let transfer (t, store : transferType * storage) : returnType =
     let new_item = { item with 
     item_hash = t.hash; 
     state = "Waiting for validation"; 
-    end_time = Tezos.now + item.period } in
+    end_time = Tezos.now + item.confirm_period } in
     let new_store = { store with 
     under_escrow = Map.update t.index (Some new_item) store.under_escrow 
     } in
@@ -194,7 +223,7 @@ let bid (i, store : nat * storage) : returnType =
         let new_item  = { item with 
         state = "Waiting for transfer"; 
         buyer = Tezos.source; 
-        end_time = Tezos.now + item.period 
+        end_time = Tezos.now + item.transfer_period 
         } in
         let updated_escrows = Map.add i new_item store.under_escrow in
         let updated_offers = Map.remove i store.offered_items in
@@ -219,35 +248,7 @@ let confirm (i, store : nat * storage) : returnType =
     state = "Confirmed"; 
     end_time = Tezos.now 
     } in
-
     ([] : operation list), store
-
-let reward (i, store : nat * storage) : returnType =
-    if Tezos.source <> store.owner then
-    (failwith("Only the contract's owner has authorization to hand out rewards") : returnType)
-    else
-    match Map.find_opt i store.under_escrow with
-    | None -> (failwith("this item is not under escrow") : returnType)
-    | Some item ->
-    if Tezos.now <= item.end_time then
-    (failwith("Wait until the exchange is over") : returnType)
-    else
-    let op_list : operation list = [] in 
-    let buyer_contract = getContract item.buyer in
-    let seller_contract = getContract item.seller in
-    let updated_sold = Map.add i item store.sold_items in
-    let updated_escrows = Map.remove i store.under_escrow in
-    if item.state = "Confirmed" then
-    let buyer_transfer = Tezos.transaction unit item.slashing buyer_contract :: op_list in
-    let seller_transfer = Tezos.transaction unit (item.asked_price - item.commission) seller_contract :: op_list in
-    op_list, store
-    else 
-    if item.state = "Waiting for validation" then
-    let seller_transfer = Tezos.transaction unit (item.asked_price - item.commission) seller_contract :: op_list in
-    op_list, store
-    else  
-    let buyer_transfer = Tezos.transaction unit (item.asked_price + item.slashing) buyer_contract :: op_list in
-    op_list, store
 
 //===============================================
 // Main
@@ -261,4 +262,3 @@ let main (a, store : action * storage) : returnType =
     | Bid(v) -> bid(v, store)
     | Transfer(v) -> transfer(v, store)
     | Confirm(v) -> confirm(v, store)
-    | Reward(v) -> reward(v, store)

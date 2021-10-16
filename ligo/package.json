@@ -6,7 +6,7 @@
     "ganache-cli": "^6.10.0-tezos.1"
   },
   "scripts": {
-    "start-sandbox": "docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210216 edobox start",
+    "start-sandbox": "docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210930 hangzbox start",
     "stop-sandbox": "docker kill my-sandbox"
   },
   "repository": {
