@@ -24,6 +24,10 @@ const { pkh } = require('../faucet.json');
       assert.strictEqual(storage.last_id, 0);
     });
 
+    //===============================================================
+    // ADMIN TESTS
+    //===============================================================
+
     it('Should add a reward type by an account different from the owner account', async function () {
       try {
         await instance.admin(
@@ -126,8 +130,46 @@ const { pkh } = require('../faucet.json');
         })
       );
       await instance.admin(removeType('differentName'));
-      await instance.storage();
+      let storage = await instance.storage();
       assert.strictEqual(storage.rewards.size, 1);
+    });
+
+    //===============================================================
+    // OFFER TESTS
+    //===============================================================
+
+    it('Should try to sell an unsupported item type', async function () {
+      try {
+        await instance.offer('differentName', 1);
+      } catch (error) {
+        assert.strictEqual(error, "This item's type is not defined");
+      }
+    });
+
+    it('Should try to hand out an item', async function () {
+      try {
+        await instance.offer('name', 0);
+      } catch (error) {
+        assert.strictEqual(error, 'Item price is 0tez');
+      }
+    });
+
+    it('Should offer a legitimate item', async function () {
+      await instance.offer('name', 10);
+      let storage = await instance.storage();
+      assert.strictEqual(storage.offered_items.size, 1);
+    });
+
+    //===============================================================
+    // BID TESTS
+    //===============================================================
+
+    it('Should try to buy a non existing item', async function () {
+      try {
+        await instance.bid(10, 10);
+      } catch (error) {
+        assert.strictEqual(error, "No item matches the index you've chosen");
+      }
     });
   });
 };
