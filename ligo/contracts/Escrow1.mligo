@@ -68,9 +68,9 @@ let calculateCommissions (price, rate : tez * nat) : tez =
 
 let getContract (ad : address) : unit contract =
     let contr : unit contract = match ((Tezos.get_contract_opt ad) : (unit contract) option) with
-        | None -> (failwith("No contract to matches transaction") : unit contract)
-        | Some c -> c in
-        contr
+    | None -> (failwith("No contract to matches transaction") : unit contract)
+    | Some c -> c in
+    contr
 
 //==========================================================
 // Admin functions
@@ -108,32 +108,27 @@ let reward (i, store : nat * storage) : returnType =
     | None -> (failwith("This item is not under escrow") : returnType)
     | Some item ->
     if Tezos.now <= item.end_time then
-    (failwith("Wait until the exchange is over") : returnType)
+        (failwith("Wait until the exchange is over") : returnType)
     else
-    let op_list : operation list = [] in 
-    let buyer_contract = getContract item.buyer in
-    let seller_contract = getContract item.seller in
-    let new_store = { store with
-    sold_items = Map.add i item store.sold_items;
-    under_escrow = Map.remove i store.under_escrow;
-    } in
+        let buyer_contract = getContract item.buyer in
+        let seller_contract = getContract item.seller in
+        let new_store = { store with
+        sold_items = Map.add i item store.sold_items;
+        under_escrow = Map.remove i store.under_escrow;
+        } in
     if item.state = states.3 then
-    let buyer_transfer = Tezos.transaction unit item.slashing buyer_contract :: op_list in
-    let seller_transfer = Tezos.transaction unit (item.asked_price - item.commission) seller_contract :: op_list in
-    op_list, new_store
-    else 
-    if item.state = states.2 then
-    let seller_transfer = Tezos.transaction unit (item.asked_price - item.commission) seller_contract :: op_list in
-    op_list, new_store
+        let buyer_transfer = Tezos.transaction unit item.slashing buyer_contract in
+        let seller_transfer = Tezos.transaction unit (item.asked_price - item.commission) seller_contract in
+        let op_list : operation list = [buyer_transfer; seller_transfer] in
+        op_list, new_store
+    else if item.state = states.2 then
+        let seller_transfer = Tezos.transaction unit (item.asked_price - item.commission) seller_contract in
+        let op_list : operation list = [seller_transfer] in
+        op_list, new_store
     else  
-    let buyer_transfer = Tezos.transaction unit (item.asked_price + item.slashing) buyer_contract :: op_list in
+    let buyer_transfer = Tezos.transaction unit (item.asked_price + item.slashing) buyer_contract in
+    let op_list : operation list = [buyer_transfer] in
     op_list, new_store
-
-    
-
-// let terminateExchange (escrow, store : escrow * storage) : returnType =
-//     ([] : operation list), store
-
 
 //===========================================================================
 // Entry Points
@@ -171,7 +166,7 @@ let offer (offer, store : offerType * storage) : returnType =
     | None -> (failwith("This item's type is not defined") : returnType)
     | Some r ->
     if offer.asked_price = 0tez then
-    (failwith("Item price is 0tez") : returnType)
+        (failwith("Item price is 0tez") : returnType)
     else
     let new_item : item = {
         id = store.last_id + 1n;
@@ -210,11 +205,11 @@ let transfer (t, store : transferType * storage) : returnType =
     | None -> (failwith("This item is not under escrow or doesn't exist") : returnType)
     | Some item -> 
     if Tezos.source <> item.seller then
-    (failwith("Only the seller of the item can transfer the item hash") : returnType)
+        (failwith("Only the seller of the item can transfer the item hash") : returnType)
     else if item.state <> states.1 then
-    (failwith("No tokens were sent for this item") : returnType)
+        (failwith("No tokens were sent for this item") : returnType)
     else if Tezos.now > item.end_time then
-    (failwith("The transfer period is over. The transaction will be canceled shortly") : returnType)
+        (failwith("The transfer period is over. The transaction will be canceled shortly") : returnType)
     else
     let new_item = { item with 
     item_hash = t.hash; 
@@ -243,15 +238,15 @@ let bid (id, store : nat * storage) : returnType =
     if Tezos.amount < item.asked_price + item.slashing then
         (failwith("Not enough tokens were sent for this purchase") : returnType)
     else 
-        let new_item  = { item with 
-        state = states.1; 
-        buyer = Tezos.source; 
-        end_time = Tezos.now + item.transfer_period 
-        } in
-        let new_store = { store with
-        under_escrow = Map.add id new_item store.under_escrow;
-        offered_items = Map.remove id store.offered_items;
-        } in
+    let new_item  = { item with 
+    state = states.1; 
+    buyer = Tezos.source; 
+    end_time = Tezos.now + item.transfer_period 
+    } in
+    let new_store = { store with
+    under_escrow = Map.add id new_item store.under_escrow;
+    offered_items = Map.remove id store.offered_items;
+    } in
     ([] : operation list), new_store
 
 // the confirm entry point is used to confirm that the item was received and satisfied the buyer's requirements
@@ -269,11 +264,11 @@ let confirm (id, store : nat * storage) : returnType =
     | None -> (failwith("This item is not under escrow or doesn't exist") : returnType)
     | Some item -> 
     if Tezos.source <> item.buyer then
-    (failwith("Only the item's buyer can confirm this transaction") : returnType)
+        (failwith("Only the item's buyer can confirm this transaction") : returnType)
     else if item.state <> states.2 then
-    (failwith("The state of the escrow doesn't require validation") : returnType)
+        (failwith("The state of the escrow doesn't require validation") : returnType)
     else if Tezos.now > item.end_time then
-    (failwith("The confirmation period is over") : returnType)
+        (failwith("The confirmation period is over") : returnType)
     else 
     let new_item = { item with 
     state = states.3; 
@@ -299,11 +294,11 @@ let deny (id, store : nat * storage) : returnType =
     | None -> (failwith("This item is not under escrow or doesn't exist") : returnType)
     | Some item -> 
     if Tezos.source <> item.buyer then
-    (failwith("Only the item's buyer can deny this transaction") : returnType)
+        (failwith("Only the item's buyer can deny this transaction") : returnType)
     else if item.state <> states.2 then
-    (failwith("The state of the escrow doesn't require validation") : returnType)
+        (failwith("The state of the escrow doesn't require validation") : returnType)
     else if Tezos.now > item.end_time then
-    (failwith("The confirmation period is over") : returnType)
+        (failwith("The confirmation period is over") : returnType)
     else
     let new_item = { item with
     state = states.4;
