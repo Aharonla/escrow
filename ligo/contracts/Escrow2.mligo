@@ -34,14 +34,12 @@ type transferType = {
     hash : string
 }
 
-type adminAction =
+
+type action = 
 | AddType of rewardType
 | ChangeType of rewardType
 | RemoveType of rewardType
 | Reward of nat
-
-type action = 
-| Admin of adminAction
 | Offer of offerType
 | Bid of nat
 | Transfer of transferType
@@ -79,19 +77,42 @@ let getContract (ad : address) : unit contract =
 // Admin functions
 //==========================================================
 
-// the admin's 'type' functions are used to manage the 'rewardType' list
+
+
+
+//===========================================================================
+// Entry Points
+//===========================================================================
+
+//===============================================
+// Admin entry point
+//===============================================
+
+// the admin's 'type' functions are used to manage the rewarding system
 
 let addType (t, store : rewardType * storage) : returnType =
+    // !!!-REMOVE COMMENTED LINES (3 FOLLOWING LINES) WHEN NOT TESTING-!!!
+    // if Tezos.source <> store.owner then
+    //     (failwith("Only the contract's owner has admin rights"))
+    // else
     match Map.find_opt t.name store.rewards with 
     | Some tp -> (failwith("Reward type already exists") : returnType)
     | None -> ([] : operation list), { store with rewards = Map.add t.name t store.rewards }
 
 let changeType (t, store : rewardType * storage) : returnType =
+    // !!!-REMOVE COMMENTED LINES (3 FOLLOWING LINES) WHEN NOT TESTING-!!!
+    // if Tezos.source <> store.owner then
+    //     (failwith("Only the contract's owner has admin rights"))
+    // else
     match Map.find_opt t.name store.rewards with
     | None -> (failwith("Reward type doesn't exist") : returnType)
     | Some tp -> ([] : operation list), { store with rewards = Map.update t.name (Some t) store.rewards }
     
 let removeType (t, store : rewardType * storage) : returnType =
+    // !!!-REMOVE COMMENTED LINES (3 FOLLOWING LINES) WHEN NOT TESTING-!!!
+    // if Tezos.source <> store.owner then
+    //     (failwith("Only the contract's owner has admin rights"))
+    // else
     match Map.find_opt t.name store.rewards with
     | None -> (failwith("Reward type doesn't exist") : returnType)
     | Some tp -> ([] : operation list), { store with rewards = Map.remove t.name store.rewards }
@@ -107,6 +128,10 @@ let removeType (t, store : rewardType * storage) : returnType =
 // -- The buyer gets all money back. 
 
 let reward (i, store : nat * storage) : returnType =
+    // !!!-REMOVE COMMENTED LINES (3 FOLLOWING LINES) WHEN NOT TESTING-!!! 
+    // if Tezos.source <> store.owner then
+    //     (failwith("Only the contract's owner can hand out rewards"))
+    // else
     match Map.find_opt i store.under_escrow with
     | None -> (failwith("This item is not under escrow") : returnType)
     | Some item ->
@@ -133,23 +158,6 @@ let reward (i, store : nat * storage) : returnType =
     let op_list : operation list = [buyer_transfer] in
     op_list, new_store
 
-//===========================================================================
-// Entry Points
-//===========================================================================
-
-//===============================================
-// Admin entry point
-//===============================================
-
-let admin (p, store : adminAction * storage) : returnType =
-    if store.owner <> Tezos.source then
-        (failwith("Only the owner has admin rights") : returnType)
-    else 
-        match p with
-        | AddType(v) -> addType(v, store)
-        | ChangeType(v) -> changeType(v, store)
-        | RemoveType(v) -> removeType(v, store)
-        | Reward(v) -> reward(v, store)
 
 //===============================================
 // Seller entry points
@@ -319,9 +327,12 @@ let deny (id, store : nat * storage) : returnType =
 
 let main (a, store : action * storage) : returnType =
     match a with
-    | Admin(v) -> admin(v, store)
     | Offer(v) -> offer(v, store)
     | Bid(v) -> bid(v, store)
     | Transfer(v) -> transfer(v, store)
     | Confirm(v) -> confirm(v, store)
     | Deny(v) -> deny(v, store)
+    | Reward(v) -> reward(v, store)
+    | AddType(v) -> addType(v, store)
+    | ChangeType(v) -> changeType(v, store)
+    | RemoveType(v) -> removeType(v, store)
